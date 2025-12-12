@@ -76,16 +76,16 @@ PE_Parser.exe -v C:\Windows\System32\kernelbase.dll
 ### Build from Source
 
 ```bash
-git clone https://github.com/yourusername/PE-Parser.git
-cd PE-Parser
+git clone https://github.com/Y-JANBOUBI/PE_Parser.git
+cd PE_Parser
 ```
 
-Open `PE-Parser.sln` in **Visual Studio 2022/2025** → Build → **Release | x64**
+Open `PE_Parser.sln` in **Visual Studio 2022/2025** → Build → **Release | x64**
 
 Or via command line:
 
 ```bash
-msbuild PE-Parser.sln /p:Configuration=Release /p:Platform=x64
+msbuild PE_Parser.sln /p:Configuration=Release /p:Platform=x64
 ```
 
 → Executable: `Release\PE_Parser.exe`
