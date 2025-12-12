@@ -63,7 +63,7 @@ A **fast, educational, and full-featured** Portable Executable (PE) parser for W
 
 ### Download Latest Release (Recommended)
 
-Go to [Releases](https://github.com/yourusername/PE-Parser/releases/latest) → download `PE_Parser.exe`
+Go to [Releases](https://github.com/Y-JANBOUBI/PE_Parser/releases/download/v1.0/PE_Parser.zip) → download `PE_Parser.exe`
 
 ```powershell
 # Basic info
