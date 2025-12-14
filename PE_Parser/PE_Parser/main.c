@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <stdio.h>
 #include <winternl.h>
 #include <time.h>
@@ -154,103 +154,21 @@ void hash_file(const char* filename) {
 	fclose(file);
 	CryptReleaseContext(hProv, 0);
 }
-VOID ParseImports(PBYTE pPE, IMAGE_OPTIONAL_HEADER ImgOptHdr) {
 
-	DWORD importRVA = ImgOptHdr.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
-	DWORD importSize = ImgOptHdr.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size;
-
-	if (!importRVA || !importSize) {
-		printf("\n[IMPORTS] No Import Directory.\n");
-		return;
-	}
-
-	printf(COLOR_GREEN"\n[===================================[ IMPORTS ]===================================]\n"COLOR_RESET);
-
-	PIMAGE_IMPORT_DESCRIPTOR pImportDesc =
-		(PIMAGE_IMPORT_DESCRIPTOR)(pPE + importRVA);
-
-	while (pImportDesc->Name != 0) {
-
-		char* dllName = (char*)(pPE + pImportDesc->Name);
-		printf("\n[+] DLL: " COLOR_GREEN "%s\n" COLOR_RESET, dllName);
-
-		// Thunk arrays
-		PIMAGE_THUNK_DATA thunkILT = (PIMAGE_THUNK_DATA)(pPE + pImportDesc->OriginalFirstThunk);
-		PIMAGE_THUNK_DATA thunkIAT = (PIMAGE_THUNK_DATA)(pPE + pImportDesc->FirstThunk);
-
-		while (thunkILT->u1.AddressOfData != 0) {
-
-			// IMPORT BY ORDINAL?
-			if (IMAGE_SNAP_BY_ORDINAL(thunkILT->u1.Ordinal)) {
-
-				WORD ordinal = IMAGE_ORDINAL(thunkILT->u1.Ordinal);
-				printf("\t-> Ordinal: %d\n", ordinal);
-
-			}
-			else {
-
-				PIMAGE_IMPORT_BY_NAME pImportByName =
-					(PIMAGE_IMPORT_BY_NAME)(pPE + thunkILT->u1.AddressOfData);
-
-				printf("\t-> %s\n", pImportByName->Name);
-			}
-
-			thunkILT++;
-			thunkIAT++;
-		}
-
-		pImportDesc++;
-	}
-}
-VOID ParseExports(PBYTE pPE, IMAGE_OPTIONAL_HEADER ImgOptHdr) {
-
-	DWORD exportRVA = ImgOptHdr.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
-	DWORD exportSize = ImgOptHdr.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
-
-	if (!exportRVA || !exportSize) {
-		printf("\n[EXPORTS] No Export Directory.\n");
-		return;
-	}
-
-	printf(COLOR_GREEN"\n[===================================[ EXPORTS ]===================================]\n"COLOR_RESET);
-
-	PIMAGE_EXPORT_DIRECTORY pExportDir =
-		(PIMAGE_EXPORT_DIRECTORY)(pPE + exportRVA);
-
-	DWORD* nameArray = (DWORD*)(pPE + pExportDir->AddressOfNames);
-	DWORD* funcArray = (DWORD*)(pPE + pExportDir->AddressOfFunctions);
-	WORD* ordinalArray = (WORD*)(pPE + pExportDir->AddressOfNameOrdinals);
-
-	printf("[+] DLL Exports %d functions\n\n", pExportDir->NumberOfNames);
-
-	for (DWORD i = 0; i < pExportDir->NumberOfNames; i++) {
-
-		char* funcName = (char*)(pPE + nameArray[i]);
-		WORD ordinal = ordinalArray[i] + pExportDir->Base;
-
-		DWORD funcRVA = funcArray[ordinalArray[i]];
-		PVOID funcVA = (PVOID)(pPE + funcRVA);
-
-		printf("    %s (Ordinal: %d, RVA: 0x%X)\n",
-			funcName, ordinal, funcRVA);
-	}
-}
 DWORD RvaToOffset(DWORD rva, PIMAGE_SECTION_HEADER pSectionHdr, int numSections) {
 	for (int i = 0; i < numSections; i++, pSectionHdr++) {
 		DWORD secVA = pSectionHdr->VirtualAddress;
-		DWORD secSize = pSectionHdr->Misc.VirtualSize;
+		DWORD secSize = max(pSectionHdr->Misc.VirtualSize, pSectionHdr->SizeOfRawData);
 		if (rva >= secVA && rva < secVA + secSize)
 			return rva - secVA + pSectionHdr->PointerToRawData;
 	}
-	return rva; // fallback, may be invalid
+	return rva;
 }
 int CompareFunc(const void* a, const void* b) {
 	IMPORTED_FUNC* fa = (IMPORTED_FUNC*)a;
 	IMPORTED_FUNC* fb = (IMPORTED_FUNC*)b;
 	return strcmp(fa->name, fb->name);
 }
-
-
 VOID print_Lib(INT Verb, int Type, int Lib_Count, IMPORTED_LIB* Fun_List)
 {
 	const char* header =
@@ -562,7 +480,7 @@ VOID ParsePe(IN PBYTE pPE, IN char* Target_Name, IN char* Target_File_path, IN S
 				PBYTE thunkBase = pPE + thunkOffset;
 
 				while (1) {
-					ULONGLONG thunkVal = *(ULONGLONG*)thunkBase;
+					DWORD thunkVal = *(DWORD*)thunkBase;
 					if (!thunkVal)
 						break;
 
@@ -572,7 +490,7 @@ VOID ParsePe(IN PBYTE pPE, IN char* Target_Name, IN char* Target_File_path, IN S
 					ZeroMemory(fn, sizeof(IMPORTED_FUNC));
 
 					// Ordinal import
-					if (thunkVal & IMAGE_ORDINAL_FLAG64) {
+					if (thunkVal & IMAGE_ORDINAL_FLAG32) {
 						fn->isOrdinal = 1;
 						fn->ordinal = (WORD)(thunkVal & 0xFFFF);
 					}
@@ -583,7 +501,7 @@ VOID ParsePe(IN PBYTE pPE, IN char* Target_Name, IN char* Target_File_path, IN S
 						strcpy(fn->name, pName->Name);
 					}
 					lib->funcCount++;
-					thunkBase += sizeof(ULONGLONG);
+					thunkBase += sizeof(DWORD);
 				}
 				ImportLibCount++;
 				pImportDesc++;
@@ -801,6 +719,7 @@ VOID ParsePe(IN PBYTE pPE, IN char* Target_Name, IN char* Target_File_path, IN S
 					lib->funcCount++;
 					thunkBase += sizeof(ULONGLONG);
 				}
+
 				ImportLibCount++;
 				pImportDesc++;
 			}
